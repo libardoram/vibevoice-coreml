@@ -1,0 +1,9 @@
+build/
+*.mlpackage
+*.mlmodelc
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+.DS_Store
