@@ -1,0 +1,38 @@
+[project]
+name = "vibevoice-realtime-0.5b-coreml"
+version = "0.1.0"
+description = "CoreML export for microsoft/VibeVoice-Realtime-0.5B streaming TTS"
+readme = "README.md"
+requires-python = "==3.10.12"
+dependencies = [
+    "coremltools==9.0",
+    "numpy==1.26.4",
+    "soundfile==0.13.1",
+    "torch==2.5.1",
+    "typer==0.16.0",
+    "transformers==4.51.3",
+    "huggingface-hub>=0.25.2",
+    "safetensors>=0.4.0",
+    "diffusers>=0.30.0",
+    "scipy>=1.5.0",
+    "vibevoice @ git+https://github.com/microsoft/VibeVoice.git",
+    "mlx>=0.22.0",
+    "mlx-audio>=0.2.6",
+]
+
+[project.scripts]
+vibevoice-realtime-coreml = "convert_coreml:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "convert_coreml.py",
+    "traceable_*.py",
+    "README.md",
+]

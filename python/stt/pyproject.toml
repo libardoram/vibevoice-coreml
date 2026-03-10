@@ -1,0 +1,35 @@
+[project]
+name = "vibevoice-asr-coreml"
+version = "0.1.0"
+description = "CoreML export for microsoft/VibeVoice-ASR-HF speech recognition"
+readme = "README.md"
+requires-python = "==3.10.12"
+dependencies = [
+    "coremltools==9.0",
+    "numpy==1.26.4",
+    "soundfile==0.13.1",
+    "torch==2.5.1",
+    "typer==0.16.0",
+    "transformers>=5.3.0",
+    "huggingface-hub>=0.25.2",
+    "safetensors>=0.4.0",
+    "scipy>=1.5.0",
+]
+
+[project.optional-dependencies]
+mlx = [
+    "mlx>=0.22.0",
+    "mlx-lm>=0.22.0",
+    "mlx-audio>=0.2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["convert", "run"]
+
