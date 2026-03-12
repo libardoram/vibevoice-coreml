@@ -19,7 +19,6 @@ from bench_mlx_common import (
     AcousticConnector as MlxAcousticConnector,
     DiffusionHead as MlxDiffusionHead,
     LMHead as MlxLMHead,
-    Qwen2Decoder as MlxQwen2Decoder,
     Qwen2Layer as MlxQwen2Layer,
     VAEDecoder as MlxVAEDecoder,
     make_rope as mlx_make_rope,
@@ -29,6 +28,7 @@ from bench_mlx_common import (
     to_mx,
 )
 from diffusion import DDPM_STEPS, VAE_DIM
+from rope import ROPE_THETA
 
 
 # Precompute DPM-Solver++ schedule constants (float64 for precision)
@@ -151,16 +151,35 @@ def run_mlx(
     embed_table_np = weights["model.language_model.embed_tokens.weight"].float().numpy()
     embed_table_mx = mx.array(embed_table_np).astype(dtype)
 
-    # Build LM layers (manual KV cache)
+    # Build LM layers — eval each layer immediately to avoid lazy accumulation.
+    # Without this, MLX defers all fp32→fp16→int8 conversions until first use,
+    # requiring ~49 GB peak (all intermediates alive simultaneously).
+    # With per-layer eval, peak drops to ~weight of 1 layer + final int8 weights.
     lm_layers = []
     for i in range(common.NUM_LAYERS):
-        lm_layers.append(MlxQwen2Layer(weights, f"model.language_model.layers.{i}.", dtype, quantize=use_int8))
+        layer = MlxQwen2Layer(weights, f"model.language_model.layers.{i}.", dtype, quantize=use_int8)
+        if use_int8:
+            # Force materialization: eval quantized weights so fp32/fp16 intermediates are freed
+            eval_items = []
+            for attr in ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]:
+                w = getattr(layer, attr)
+                if hasattr(w, "w_q"):
+                    eval_items.extend([w.w_q, w.scales, w.biases])
+            if eval_items:
+                mx.eval(*eval_items)
+        lm_layers.append(layer)
     lm_norm_w = to_mx(weights["model.language_model.norm.weight"], dtype)
+
+    # Free PyTorch weights — MLX components have their own copies now
+    weights.clear()
+    del embed_table_np
 
     metrics.record("load", (time.perf_counter() - t0) * 1000)
 
-    def lm_forward_with_cache(h_mx, cos_mx, sin_mx, k_cache, v_cache, pos):
-        """Single-token LM forward with manual KV cache."""
+    _attn_scale = 1.0 / math.sqrt(common.HEAD_DIM)
+
+    def lm_forward_with_cache(h_mx, cos_mx, sin_mx, k_cache, v_cache, pos, mask=None):
+        """LM forward with KV cache. Supports Q>1 for batched prefill."""
         B, Q, H = h_mx.shape
         for li, layer in enumerate(lm_layers):
             residual = h_mx
@@ -170,7 +189,6 @@ def run_mlx(
             k = (qmm(h, layer.k_proj) + layer.k_bias).reshape(B, Q, common.NUM_KV_HEADS, common.HEAD_DIM).transpose(0, 2, 1, 3)
             v = (qmm(h, layer.v_proj) + layer.v_bias).reshape(B, Q, common.NUM_KV_HEADS, common.HEAD_DIM).transpose(0, 2, 1, 3)
 
-            from rope import ROPE_THETA
             q = q * cos_mx + mlx_rotate_half(q) * sin_mx
             k = k * cos_mx + mlx_rotate_half(k) * sin_mx
 
@@ -182,14 +200,10 @@ def run_mlx(
                 k_cache[li] = mx.concatenate([k_cache[li], k], axis=2)
                 v_cache[li] = mx.concatenate([v_cache[li], v], axis=2)
 
-            k_full = mx.repeat(k_cache[li], common.GQA_REPEAT, axis=1)
-            v_full = mx.repeat(v_cache[li], common.GQA_REPEAT, axis=1)
-
-            # Attention in float32 to prevent fp16 overflow in QK^T
-            scale = 1.0 / math.sqrt(common.HEAD_DIM)
-            attn = (q.astype(mx.float32) @ k_full.astype(mx.float32).transpose(0, 1, 3, 2)) * scale
-            attn = mx.softmax(attn, axis=-1)
-            out = (attn @ v_full.astype(mx.float32)).astype(dtype).transpose(0, 2, 1, 3).reshape(B, Q, H)
+            # Scaled dot-product attention with native GQA support (no repeat needed)
+            out = mx.fast.scaled_dot_product_attention(
+                q, k_cache[li], v_cache[li], scale=_attn_scale, mask=mask,
+            ).transpose(0, 2, 1, 3).reshape(B, Q, H)
             h_mx = residual + qmm(out, layer.o_proj)
 
             residual = h_mx
@@ -205,7 +219,6 @@ def run_mlx(
     neg_k = [None] * common.NUM_LAYERS
     neg_v = [None] * common.NUM_LAYERS
     neg_embed_mx = embed_table_mx[common.SPEECH_START_ID].reshape(1, 1, common.HIDDEN_SIZE)
-    from rope import ROPE_THETA
     neg_cos_mx, neg_sin_mx = mlx_make_rope(mx.array(0.0), common.HEAD_DIM, ROPE_THETA, dtype)
     neg_hidden_mx = lm_forward_with_cache(neg_embed_mx, neg_cos_mx, neg_sin_mx, neg_k, neg_v, 0)
     mx.eval(neg_hidden_mx)
@@ -235,14 +248,31 @@ def run_mlx(
                 if i < spk_embeds_mx.shape[0]:
                     vc_pos_to_embed[pos] = spk_embeds_mx[i:i+1]
 
+    # Batched prefill: build full embedding tensor and process all tokens at once
+    n_prefill = len(input_ids)
+    prefill_embeds = []
     for pos, tok_id in enumerate(input_ids):
         if pos in vc_pos_to_embed:
-            embed = vc_pos_to_embed[pos].reshape(1, 1, common.HIDDEN_SIZE)
+            prefill_embeds.append(vc_pos_to_embed[pos].reshape(1, common.HIDDEN_SIZE))
         else:
-            embed = embed_table_mx[tok_id].reshape(1, 1, common.HIDDEN_SIZE)
-        cos_mx, sin_mx = mlx_make_rope(mx.array(float(pos)), common.HEAD_DIM, ROPE_THETA, dtype)
-        hidden_mx = lm_forward_with_cache(embed, cos_mx, sin_mx, k_cache, v_cache, pos)
-        mx.eval(hidden_mx)
+            prefill_embeds.append(embed_table_mx[tok_id].reshape(1, common.HIDDEN_SIZE))
+    prefill_embeds_mx = mx.stack(prefill_embeds, axis=0).reshape(1, n_prefill, common.HIDDEN_SIZE)
+
+    # Batched RoPE for all prefill positions
+    positions = mx.arange(n_prefill, dtype=mx.float32)
+    inv_freq = 1.0 / (ROPE_THETA ** (mx.arange(0, common.HEAD_DIM, 2, dtype=mx.float32) / common.HEAD_DIM))
+    freqs = positions[:, None] * inv_freq[None, :]  # (Q, HEAD_DIM/2)
+    freqs = mx.concatenate([freqs, freqs], axis=-1)  # (Q, HEAD_DIM)
+    cos_prefill = mx.cos(freqs).reshape(1, 1, n_prefill, common.HEAD_DIM).astype(dtype)
+    sin_prefill = mx.sin(freqs).reshape(1, 1, n_prefill, common.HEAD_DIM).astype(dtype)
+
+    # Causal mask for prefill: additive mask with -inf for future positions
+    causal_mask = mx.triu(mx.full((n_prefill, n_prefill), float("-inf"), dtype=dtype), k=1)
+
+    hidden_mx = lm_forward_with_cache(prefill_embeds_mx, cos_prefill, sin_prefill, k_cache, v_cache, 0, mask=causal_mask)
+    mx.eval(hidden_mx)
+    # Keep only the last position's hidden state
+    hidden_mx = hidden_mx[:, -1:, :]
 
     metrics.record("prefill", (time.perf_counter() - t0) * 1000)
     metrics.num_text_tokens = len(input_ids)

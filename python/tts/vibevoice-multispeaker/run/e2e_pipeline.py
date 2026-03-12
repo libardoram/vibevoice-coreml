@@ -119,7 +119,8 @@ def main():
     parser.add_argument("--model-id", required=False,
                         choices=list(common.MODEL_CONFIGS.keys()),
                         help="Model to use")
-    parser.add_argument("--text", default=common.DEFAULT_TEXT, help="Input text (Speaker N: ...)")
+    parser.add_argument("--text", default=None, help="Input text (Speaker N: ...)")
+    parser.add_argument("--text-file", default=None, help="Read input text from file")
     parser.add_argument("--max-speech-tokens", type=int, default=None,
                         help="Max speech tokens to generate (default: auto from text length)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for diffusion noise")
@@ -149,6 +150,11 @@ def main():
     parser.add_argument("--ref-audio", type=str, nargs="+", default=None,
                         help="Reference audio file(s) for voice cloning, one per speaker (WAV/MP3)")
     args = parser.parse_args()
+
+    if args.text_file:
+        args.text = Path(args.text_file).read_text().strip()
+    elif args.text is None:
+        args.text = common.DEFAULT_TEXT
 
     if args.model_id is None:
         parser.error("--model-id is required")
@@ -279,9 +285,10 @@ def main():
     if args.mlx:
         from pipeline_mlx import run_mlx
         from safetensors.torch import load_file
+        from huggingface_hub import snapshot_download
         print(f"\n>>> Running MLX pipeline ({opt.solver}-{opt.diffusion_steps}s)...")
-        model_path = Path.home() / f".cache/huggingface/hub/models--{common.MODEL_ID.replace('/', '--')}/snapshots"
-        st_files = sorted(model_path.rglob("model*.safetensors"))
+        model_path = Path(snapshot_download(common.MODEL_ID))
+        st_files = sorted(model_path.glob("model*.safetensors"))
         weights = {}
         for f in st_files:
             weights.update(load_file(str(f)))

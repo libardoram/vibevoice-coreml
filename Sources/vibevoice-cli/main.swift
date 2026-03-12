@@ -140,6 +140,7 @@ while i < args.count {
     case "--voices": i += 1; voicesPath = args[i]
     case "--tokenizer": i += 1; tokenizerPath = args[i]
     case "--text": i += 1; text = args[i].replacingOccurrences(of: "\\n", with: "\n")
+    case "--text-file": i += 1; text = (try? String(contentsOfFile: args[i], encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     case "--voice": i += 1; voice = args[i]
     case "--output": i += 1; outputPath = args[i]
     case "--seed": i += 1; seed = UInt64(args[i])

@@ -38,7 +38,8 @@ import pipeline_common as common
 
 def main():
     parser = argparse.ArgumentParser(description="VibeVoice-Realtime-0.5B E2E Pipeline")
-    parser.add_argument("--text", default=common.DEFAULT_TEXT, help="Text to synthesize")
+    parser.add_argument("--text", default=None, help="Text to synthesize")
+    parser.add_argument("--text-file", default=None, help="Read input text from file")
     parser.add_argument("--voice", default=common.DEFAULT_VOICE, help="Voice preset name")
     parser.add_argument("--voice-dir", type=Path, default=None, help="Voice prompt directory (default: voices/)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for diffusion noise")
@@ -55,6 +56,11 @@ def main():
     parser.add_argument("--fused-diffusion", action="store_true",
                         help="Use fused diffusion loop (requires diffusion_loop.mlpackage)")
     args = parser.parse_args()
+
+    if args.text_file:
+        args.text = Path(args.text_file).read_text().strip()
+    elif args.text is None:
+        args.text = common.DEFAULT_TEXT
 
     # Default to all backends if none specified
     if not args.pytorch and not args.coreml and not args.mlx:
