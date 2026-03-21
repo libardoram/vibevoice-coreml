@@ -1693,6 +1693,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "vibevoice-mlx"
+version = "0.1.0"
+source = { git = "https://github.com/gafiatulin/vibevoice-mlx.git#2a726ca74a17fec37f18114d19e5b3d4916a7f1c" }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "mlx" },
+    { name = "safetensors" },
+    { name = "soundfile" },
+    { name = "transformers" },
+]
+
+[[package]]
 name = "vibevoice-multispeaker-coreml"
 version = "0.1.0"
 source = { editable = "." }
@@ -1709,6 +1721,7 @@ dependencies = [
     { name = "transformers" },
     { name = "typer" },
     { name = "vibevoice" },
+    { name = "vibevoice-mlx" },
 ]
 
 [package.metadata]
@@ -1725,6 +1738,7 @@ requires-dist = [
     { name = "transformers", specifier = "==4.51.3" },
     { name = "typer", specifier = "==0.16.0" },
     { name = "vibevoice", git = "https://github.com/microsoft/VibeVoice.git" },
+    { name = "vibevoice-mlx", git = "https://github.com/gafiatulin/vibevoice-mlx.git" },
 ]
 
 [[package]]

@@ -84,17 +84,23 @@ Text + voice prompt
 ## Quick Start
 
 ```bash
-cd models/tts/vibevoice-multispeaker/coreml
+cd python/tts/vibevoice-multispeaker
 uv sync
 
-# Convert 1.5B with INT8 + fused LM+head
+# Convert CoreML models (1.5B with INT8 + fused LM+head)
 uv run python convert/convert_all.py --model-id microsoft/VibeVoice-1.5B --int8 --fuse-lm-head
 
-# Convert 7B with INT8 + fused LM+head
+# Convert CoreML models (7B with INT8 + fused LM+head)
 uv run python convert/convert_all.py --model-id vibevoice/VibeVoice-7B --int8 --fuse-lm-head
 
-# Run end-to-end benchmark
-uv run python run/e2e_pipeline.py --model-id microsoft/VibeVoice-1.5B --int8 --fused-lm-head
+# Run MLX backend (no CoreML conversion needed, downloads MLX weights from HF)
+uv run python run/e2e_pipeline.py --model-id microsoft/VibeVoice-1.5B --mlx --int8 --solver dpm --diffusion-steps 10
+
+# Run CoreML backend
+uv run python run/e2e_pipeline.py --model-id microsoft/VibeVoice-1.5B --coreml --int8 --solver dpm --diffusion-steps 10
+
+# Compare all backends
+uv run python run/e2e_pipeline.py --model-id microsoft/VibeVoice-1.5B --pytorch --coreml --mlx --int8 --solver dpm --diffusion-steps 10
 ```
 
 ## Scripts
@@ -113,7 +119,7 @@ uv run python run/e2e_pipeline.py --model-id microsoft/VibeVoice-1.5B --int8 --f
 | | `pipeline_common.py` | Shared constants, configs, metrics, tokenizer |
 | | `pipeline_pytorch.py` | PyTorch backend |
 | | `pipeline_coreml.py` | CoreML backend |
-| | `pipeline_mlx.py` | MLX backend |
+| | `pipeline_mlx.py` | MLX backend (via [vibevoice-mlx](https://github.com/gafiatulin/vibevoice-mlx)) |
 
 ## Optimizations
 

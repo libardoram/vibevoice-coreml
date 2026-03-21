@@ -65,6 +65,7 @@ MODEL_CONFIGS = {
         "build_dir": "build/vibevoice-1.5b",
         "tokenizer": "Qwen/Qwen2.5-1.5B",
         "output_dir": "run/output/vibevoice-1.5b",
+        "mlx_model_id": "gafiatulin/vibevoice-1.5b-mlx",
     },
     "vibevoice/VibeVoice-7B": {
         "hidden_size": 3584, "num_q_heads": 28, "num_kv_heads": 4,
@@ -72,6 +73,7 @@ MODEL_CONFIGS = {
         "build_dir": "build/vibevoice-7b",
         "tokenizer": "Qwen/Qwen2.5-7B",
         "output_dir": "run/output/vibevoice-7b",
+        "mlx_model_id": "gafiatulin/vibevoice-7b-mlx",
     },
 }
 

@@ -284,16 +284,8 @@ def main():
     # ─── MLX ──────────────────────────────────────────────────
     if args.mlx:
         from pipeline_mlx import run_mlx
-        from safetensors.torch import load_file
-        from huggingface_hub import snapshot_download
         print(f"\n>>> Running MLX pipeline ({opt.solver}-{opt.diffusion_steps}s)...")
-        model_path = Path(snapshot_download(common.MODEL_ID))
-        st_files = sorted(model_path.glob("model*.safetensors"))
-        weights = {}
-        for f in st_files:
-            weights.update(load_file(str(f)))
-
-        audio_mlx, metrics_mlx = run_mlx(input_ids, args.max_speech_tokens, args.seed, weights, opt, voice_clone=voice_clone)
+        audio_mlx, metrics_mlx = run_mlx(input_ids, args.max_speech_tokens, args.seed, opt, voice_clone=voice_clone)
         results.append(_save_result("mlx", audio_mlx, metrics_mlx))
 
     # ─── Report ───────────────────────────────────────────────

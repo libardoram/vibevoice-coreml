@@ -17,6 +17,7 @@ dependencies = [
     "scipy>=1.5.0",
     "vibevoice @ git+https://github.com/microsoft/VibeVoice.git",
     "mlx>=0.22.0",
+    "vibevoice-mlx @ git+https://github.com/gafiatulin/vibevoice-mlx.git",
 ]
 
 [project.scripts]
